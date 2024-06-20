@@ -2,9 +2,17 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-static void serverDo(int client_fd);
-static int32_t readFull(int fd, char *buf, size_t n);
-static int32_t readAll(int fd, const char *buf, size_t n);
+#include <cassert>
+
+// Functions
+//static void serverDo(int client_fd);
+static int32_t readAll(int fd, char *buf, size_t n);
+static int32_t writeAll(int fd, const char *buf, size_t n);
+static int32_t oneRequest(int client_fd);
+
+// global variables
+const size_t k_max_msg = 4096;
+
 
 int main() {
   // Flush after every std::cout / std::cerr
@@ -49,7 +57,7 @@ int main() {
       continue;
     }
     while(true) {
-      int32_t err = oneRequest(clinet_fd);
+      int32_t err = oneRequest(client_fd);
       if(err) {
         std::cerr << "The request is failed in the 'oneRequest()' function!\n";
         break;
@@ -61,15 +69,15 @@ int main() {
   return 0;
 }
 
-static void serverDo(int client_fd) {
-  char rbuf[64] = {};
-  if(read(client_fd, rbuf, sizeof(rbuf) - 1) < 0) {
-    std::cerr << "Server failed to read from the buffer!\n";
-  }
-  printf("Client says: %s\n", rbuf);
-  char wbuf[] = "World! \n";
-  write(client_fd, wbuf, strlen(wbuf));
-}
+//static void serverDo(int client_fd) {
+//  char rbuf[64] = {};
+//  if(read(client_fd, rbuf, sizeof(rbuf) - 1) < 0) {
+//    std::cerr << "Server failed to read from the buffer!\n";
+//  }
+//  printf("Client says: %s\n", rbuf);
+//  char wbuf[] = "World! \n";
+//  write(client_fd, wbuf, strlen(wbuf));
+//}
 
 // Two helper functions to do in the oneRequest() function
 static int32_t readAll(int fd, char *buf, size_t n) {
@@ -87,7 +95,7 @@ static int32_t readAll(int fd, char *buf, size_t n) {
 }
 
 
-static int32_t readAll(int fd, const char *buf, size_t n) {
+static int32_t writeAll(int fd, const char *buf, size_t n) {
   while(n > 0) {
     ssize_t rv = write(fd, buf, n);
     if(rv <= 0) {
@@ -102,5 +110,43 @@ static int32_t readAll(int fd, const char *buf, size_t n) {
 }
 
 static int32_t oneRequest(int client_fd) {
-  return
+  char rbuf[4 + k_max_msg + 1];
+  int errorNo = 0;
+  // Read from the client fd to the buffer
+  // 4 bytes header, is used to tell the size of the request
+  int32_t error = readAll(client_fd, rbuf, 4);
+  if(error) {
+    if(errorNo == 0) {
+      std::cerr << "Error: EOF in the function oneRequest()!\n";
+    } else {
+      std::cerr << "Error: Error happens in the function readAll()!\n";
+    }
+    return error;
+  }
+
+  uint32_t reqLen = 0;
+  // Copy the first 4 block in the rbuf to the reqLen
+  memcpy(&reqLen, rbuf, 4); // assume little endian
+  if(reqLen > k_max_msg) {
+    std::cerr << "Error: the request length is too long!\n";
+  }
+
+  // Get the request body
+  error = readAll(client_fd, &rbuf[4], reqLen);
+  if(error) {
+    std::cerr << "Error: Error happens in the function readAll() when getting the request body!\n";
+    return error;
+  }
+  // assign the end of the string
+  rbuf[4 + reqLen] = '\0';
+  printf("client says: %s\n", &rbuf[4]);
+
+  uint32_t replyLen = 0;
+  // Replay using the same protocol (first 4 bytes are the length)
+  const char replyMsg[] = "world";
+  char wbuf[4 + sizeof(replyMsg)];
+  replyLen = (uint32_t)strlen(replyMsg);
+  memcpy(wbuf, &replyLen, 4);
+  memcpy(&wbuf[4], replyMsg, replyLen);
+  return writeAll(client_fd, wbuf, 4 + replyLen);
 }
