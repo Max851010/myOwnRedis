@@ -1,5 +1,5 @@
 # Build
+
 ```
-  clang++ -c libraries/helperLibrary.cpp -o helperLibrary.o
-  clang++ server.cpp HelperLibrary.o -o myOwnRedis
+  clang++ -c libraries/HelperLibrary.cpp -o HelperLibrary.o && clang++ server.cpp helperLibrary.o -o myOwnRedis && clang++ client.cpp HelperLibrary.o -o client
 ```

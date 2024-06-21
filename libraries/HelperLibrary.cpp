@@ -8,10 +8,10 @@ namespace HelperLibrary {
     while(n > 0) {
       ssize_t rv = read(fd, buf, n);
       if(rv <= 0) {
-        std::cerr << "Error, or unexpected EOF in the readFull() function!\n";
+        std::cerr << "Error, or unexpected EOF in the readAll() function!\n";
         return -1;
       }
-      assert((size_t)rv <= 0);
+      assert((size_t)rv <= n);
       n -= (size_t)rv;
       buf += rv;
     }
@@ -23,10 +23,10 @@ namespace HelperLibrary {
     while(n > 0) {
       ssize_t rv = write(fd, buf, n);
       if(rv <= 0) {
-        std::cerr << "Error, or unexpected EOF in the readFull() function!\n";
+        std::cerr << "Error, or unexpected EOF in the writeAll() function!\n";
         return -1;
       }
-      assert((size_t)rv <= 0);
+      assert((size_t)rv <= n);
       n -= (size_t)rv;
       buf += rv;
     }

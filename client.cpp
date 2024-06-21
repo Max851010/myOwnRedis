@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <cassert>
+#include "libraries/HelperLibrary.h"
 
 // Functions
 static int32_t query(int fd, const char *text);
@@ -25,30 +26,74 @@ int main() {
     std::cerr << "Failed to connect to the server!\n";
     return 1;
   }
-
-  char msg[] = "hello";
-  write(client_fd, msg, strlen(msg));
-  char rbuf[64] = {};
-  if(read(client_fd, rbuf, sizeof(rbuf) - 1) < 0) {
-    std::cerr << "Failed to read from client fd\n";
-    return 1;
+  std::cout << "Connected to the server!\n";
+  
+  
+  std::cout << "Doing test1\n";
+  int32_t error = query(client_fd, "hello1");
+  if(error) {
+    goto L_DONE;
   }
-  printf("server says: %s\n", rbuf);
-  close(client_fd);
+  std::cout << "Doing test2\n";
+  error = query(client_fd, "hello2");
+  if(error) {
+    goto L_DONE;
+  }
+  std::cout << "Doing test3\n";
+  error = query(client_fd, "hello3");
+  if(error) {
+    goto L_DONE;
+  }
 
-  return 0;
+  L_DONE:
+    close(client_fd);
+    return 0;
 }
 
 static int32_t query(int fd, const char *text) {
   uint32_t textLen = (uint32_t)strlen(text);
   if(textLen > k_max_msg) {
-    std::cerr << "Error: the query text length is too long!\n";
+    std::cerr << "Error: The query text length is too long!\n";
     return -1;
   }
   char wbuf[4 + k_max_msg];
   memcpy(wbuf, &textLen, 4);
   memcpy(&wbuf[4], text, textLen);
 
-  int32_t error = readAll;
+  int32_t error = HelperLibrary::IOHelpers::writeAll(fd, wbuf, 4 + textLen);
+  if(error) {
+    std::cerr << "Error: Something wrong happens in the function writeAll()";
+    return error;
+  }
 
+  // 4 bytes header
+  char rbuf[4 + k_max_msg + 1];
+  int errorNo = 0;
+  error = HelperLibrary::IOHelpers::readAll(fd, rbuf, 4);
+  if(error) {
+    if(errorNo == 0) {
+      std::cerr << "Error: EOF in the function query()!\n";
+    } else {
+      std::cerr << "Error: Error happens in the function readAll()!\n";
+    }
+    return error;
+  }
+
+  memcpy(&textLen, rbuf, 4);
+  if(textLen > k_max_msg) {
+    std::cerr << "Error: the request length is too long!\n";
+    return -1;
+  }
+
+  // reply body
+  error = HelperLibrary::IOHelpers::readAll(fd, &rbuf[4], textLen);
+  if(error) {
+    std::cerr << "Error: Error happens in the function readAll() when getting the reply body!\n";
+    return error;
+  }
+  // assign the end of the string
+  rbuf[4 + textLen] = '\0';
+  printf("Server says: %s\n", &rbuf[4]);
+  
+  return 0;
 } 
