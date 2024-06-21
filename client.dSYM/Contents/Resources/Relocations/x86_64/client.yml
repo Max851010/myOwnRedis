@@ -1,9 +1,0 @@
----
-triple:          'x86_64-apple-darwin'
-binary-path:     client
-relocations:
-  - { offsetInCU: 0x26, offset: 0x26, size: 0x8, addend: 0x0, symName: _main, symObjAddr: 0x0, symBinAddr: 0x100000A00, symSize: 0x150 }
-  - { offsetInCU: 0x2DAD, offset: 0x2DAD, size: 0x8, addend: 0x0, symName: __ZNSt3__124__put_character_sequenceB8ue170006IcNS_11char_traitsIcEEEERNS_13basic_ostreamIT_T0_EES7_PKS4_m, symObjAddr: 0x150, symBinAddr: 0x100000B50, symSize: 0x160 }
-  - { offsetInCU: 0x4DC8, offset: 0x4DC8, size: 0x8, addend: 0x0, symName: __ZNSt3__116__pad_and_outputB8ue170006IcNS_11char_traitsIcEEEENS_19ostreambuf_iteratorIT_T0_EES6_PKS4_S8_S8_RNS_8ios_baseES4_, symObjAddr: 0x2B0, symBinAddr: 0x100000CB0, symSize: 0x150 }
-  - { offsetInCU: 0x7DBB, offset: 0x7DBB, size: 0x8, addend: 0x0, symName: _main, symObjAddr: 0x0, symBinAddr: 0x100000A00, symSize: 0x150 }
-...

@@ -3,11 +3,10 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <cassert>
+#include "libraries/HelperLibrary.h"
 
 // Functions
 //static void serverDo(int client_fd);
-static int32_t readAll(int fd, char *buf, size_t n);
-static int32_t writeAll(int fd, const char *buf, size_t n);
 static int32_t oneRequest(int client_fd);
 
 // global variables
@@ -35,7 +34,7 @@ int main() {
   struct sockaddr_in server_addr = {};
   server_addr.sin_family = AF_INET;
   server_addr.sin_port = ntohs(1234);
-  server_addr.sin_addr.s_addr = INADDR_ANY; // 0.0.0.0
+  server_addr.sin_addr.s_addr =  ntohl(0); // 0.0.0.0
 
   if(bind(server_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) != 0) {
     std::cerr << "Failed to bind to port 1234\n";
@@ -79,42 +78,13 @@ int main() {
 //  write(client_fd, wbuf, strlen(wbuf));
 //}
 
-// Two helper functions to do in the oneRequest() function
-static int32_t readAll(int fd, char *buf, size_t n) {
-  while(n > 0) {
-    ssize_t rv = read(fd, buf, n);
-    if(rv <= 0) {
-      std::cerr << "Error, or unexpected EOF in the readFull() function!\n";
-      return -1;
-    }
-    assert((size_t)rv <= 0);
-    n -= (size_t)rv;
-    buf += rv;
-  }
-  return 0;
-}
-
-
-static int32_t writeAll(int fd, const char *buf, size_t n) {
-  while(n > 0) {
-    ssize_t rv = write(fd, buf, n);
-    if(rv <= 0) {
-      std::cerr << "Error, or unexpected EOF in the readFull() function!\n";
-      return -1;
-    }
-    assert((size_t)rv <= 0);
-    n -= (size_t)rv;
-    buf += rv;
-  }
-  return 0;
-}
 
 static int32_t oneRequest(int client_fd) {
   char rbuf[4 + k_max_msg + 1];
   int errorNo = 0;
   // Read from the client fd to the buffer
   // 4 bytes header, is used to tell the size of the request
-  int32_t error = readAll(client_fd, rbuf, 4);
+  int32_t error = HelperLibrary::IOHelpers::readAll(client_fd, rbuf, 4);
   if(error) {
     if(errorNo == 0) {
       std::cerr << "Error: EOF in the function oneRequest()!\n";
@@ -132,7 +102,7 @@ static int32_t oneRequest(int client_fd) {
   }
 
   // Get the request body
-  error = readAll(client_fd, &rbuf[4], reqLen);
+  error = HelperLibrary::IOHelpers::readAll(client_fd, &rbuf[4], reqLen);
   if(error) {
     std::cerr << "Error: Error happens in the function readAll() when getting the request body!\n";
     return error;
@@ -148,5 +118,5 @@ static int32_t oneRequest(int client_fd) {
   replyLen = (uint32_t)strlen(replyMsg);
   memcpy(wbuf, &replyLen, 4);
   memcpy(&wbuf[4], replyMsg, replyLen);
-  return writeAll(client_fd, wbuf, 4 + replyLen);
+  return HelperLibrary::IOHelpers::writeAll(client_fd, wbuf, 4 + replyLen);
 }

@@ -2,6 +2,13 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <cassert>
+
+// Functions
+static int32_t query(int fd, const char *text);
+
+// global variables
+const size_t k_max_msg = 4096;
 
 int main() {
   int client_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -31,3 +38,17 @@ int main() {
 
   return 0;
 }
+
+static int32_t query(int fd, const char *text) {
+  uint32_t textLen = (uint32_t)strlen(text);
+  if(textLen > k_max_msg) {
+    std::cerr << "Error: the query text length is too long!\n";
+    return -1;
+  }
+  char wbuf[4 + k_max_msg];
+  memcpy(wbuf, &textLen, 4);
+  memcpy(&wbuf[4], text, textLen);
+
+  int32_t error = readAll;
+
+} 
