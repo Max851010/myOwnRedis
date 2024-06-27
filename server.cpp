@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <poll.h>
+#include <vector>
 #include "libraries/HelperLibrary.h"
 
 
@@ -91,7 +92,7 @@ int main() {
   while(true) {
     poll_args.clear();
     // put the server fd in the first one
-    struct server_pollfd = {server_fd, POLLIN, 0}; // event: if there is data to read on this one (connection request)
+    struct pollfd server_pollfd = {server_fd, POLLIN, 0}; // event: if there is data to read on this one (connection request)
     poll_args.push_back(server_pollfd);
     
     for(Conn *conn: fd2conn) {
