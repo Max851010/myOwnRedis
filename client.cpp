@@ -68,10 +68,10 @@ static int32_t query(int fd, const char *text) {
 
   // 4 bytes header
   char rbuf[4 + k_max_msg + 1];
-  int errorNo = 0;
+  errno = 0;
   error = HelperLibrary::IOHelpers::readAll(fd, rbuf, 4);
   if(error) {
-    if(errorNo == 0) {
+    if(errno == 0) {
       std::cerr << "Error: EOF in the function query()!\n";
     } else {
       std::cerr << "Error: Error happens in the function readAll()!\n";
