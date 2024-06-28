@@ -111,8 +111,6 @@ int main() {
     int rv = poll(poll_args.data(), (nfds_t)poll_args.size(), 1000);
     if(rv < 0) {
       HelperLibrary::MsgHelpers::die("There is something wrong in the function poll()!");
-    } else if (rv == 0) {
-      HelperLibrary::MsgHelpers::die("Function poll() timeout!");
     }
 
     // start from 1 cuz the first one is server_fd

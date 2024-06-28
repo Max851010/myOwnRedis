@@ -5,12 +5,12 @@
 #include <cassert>
 #include "libraries/HelperLibrary.h"
 
-// Functions
-static int32_t query(int fd, const char *text);
-
 // global variables
 const size_t k_max_msg = 4096;
 
+static int32_t query(int fd, const char *text);
+static int32_t sendReq(int client_fd, const char *text);
+static int32_t readRes(int client_fd);
 int main() {
   int client_fd = socket(AF_INET, SOCK_STREAM, 0);
   if(client_fd < 0) {
@@ -28,21 +28,21 @@ int main() {
   }
   std::cout << "Connected to the server!\n";
   
-  
-  std::cout << "Doing test1\n";
-  int32_t error = query(client_fd, "hello1");
-  if(error) {
-    goto L_DONE;
+
+  // Multiple pipelined requests
+  const char *query_list[3] = {"hello1", "hello2", "hello3"};
+  for(size_t i = 0; i < 3; i++) {
+    int32_t err = sendReq(client_fd, query_list[i]);
+    if(err) {
+      goto L_DONE; 
+    }
   }
-  std::cout << "Doing test2\n";
-  error = query(client_fd, "hello2");
-  if(error) {
-    goto L_DONE;
-  }
-  std::cout << "Doing test3\n";
-  error = query(client_fd, "hello3");
-  if(error) {
-    goto L_DONE;
+
+  for(size_t i = 0; i < 3; i++) {
+    int32_t err = readRes(client_fd);
+    if(err) {
+      goto L_DONE; 
+    }
   }
 
   L_DONE:
@@ -50,50 +50,55 @@ int main() {
     return 0;
 }
 
-static int32_t query(int fd, const char *text) {
+
+static int32_t sendReq(int client_fd, const char *text) {
   uint32_t textLen = (uint32_t)strlen(text);
   if(textLen > k_max_msg) {
-    std::cerr << "Error: The query text length is too long!\n";
+    HelperLibrary::MsgHelpers::error("The query text length is too long!");
     return -1;
   }
   char wbuf[4 + k_max_msg];
   memcpy(wbuf, &textLen, 4);
   memcpy(&wbuf[4], text, textLen);
 
-  int32_t error = HelperLibrary::IOHelpers::writeAll(fd, wbuf, 4 + textLen);
+  int32_t error = HelperLibrary::IOHelpers::writeAll(client_fd, wbuf, 4 + textLen);
   if(error) {
-    std::cerr << "Error: Something wrong happens in the function writeAll()";
+    HelperLibrary::MsgHelpers::error("Something wrong happens in the function writeAll().");
     return error;
   }
+  return 0;
+}
 
+
+static int32_t readRes(int client_fd) {
   // 4 bytes header
   char rbuf[4 + k_max_msg + 1];
   errno = 0;
-  error = HelperLibrary::IOHelpers::readAll(fd, rbuf, 4);
+  int32_t error = HelperLibrary::IOHelpers::readAll(client_fd, rbuf, 4);
   if(error) {
     if(errno == 0) {
-      std::cerr << "Error: EOF in the function query()!\n";
+      HelperLibrary::MsgHelpers::error("EOF in the function query()!");
     } else {
-      std::cerr << "Error: Error happens in the function readAll()!\n";
+      HelperLibrary::MsgHelpers::error("Error happens in the function readAll()!");
     }
     return error;
   }
 
+  uint32_t textLen = 0;
   memcpy(&textLen, rbuf, 4);
   if(textLen > k_max_msg) {
-    std::cerr << "Error: the request length is too long!\n";
+    HelperLibrary::MsgHelpers::error("The request length is too long!");
     return -1;
   }
 
   // reply body
-  error = HelperLibrary::IOHelpers::readAll(fd, &rbuf[4], textLen);
+  error = HelperLibrary::IOHelpers::readAll(client_fd, &rbuf[4], textLen);
   if(error) {
-    std::cerr << "Error: Error happens in the function readAll() when getting the reply body!\n";
+    HelperLibrary::MsgHelpers::error("Error happens in the function readAll() when getting the reply body!");
     return error;
   }
   // assign the end of the string
   rbuf[4 + textLen] = '\0';
   printf("Server says: %s\n", &rbuf[4]);
-  
   return 0;
-} 
+}
