@@ -1,17 +1,34 @@
+#include "libraries/HashTable.h"
 #include "libraries/HelperLibrary.h"
 #include <arpa/inet.h>
-#include <cassert>
+#include <assert.h>
+#include <cstddef>
 #include <errno.h>
 #include <fcntl.h>
 #include <iostream>
-#include <map>
+#include <netinet/ip.h>
 #include <poll.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <string>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <vector>
 
-// global variables
+// Find the start pointer of the struct
+// #define container_of(ptr, type, member) \
+//  ({ \
+//    const typeof(((type *)0)->member) *__mptr = (ptr); \
+//    (type *)((char *)__mptr - offsetof(type, member)); \
+//  }) // global variables
+
+#define container_of(ptr, type, member)                                        \
+  reinterpret_cast<type *>(reinterpret_cast<char *>(ptr) -                     \
+                           offsetof(type, member))
+
 const size_t k_max_msg = 4096;
 
 // Conn preparation for state machine
@@ -40,6 +57,23 @@ struct Conn {
   size_t wbuf_sent = 0;
   uint8_t wbuf[4 + k_max_msg];
 };
+
+// Structure for the key
+struct Entry {
+  struct hashTableNode HTNode;
+  std::string key;
+  std::string value;
+};
+
+static struct {
+  hashMap HMap;
+} global_data;
+
+static bool entryEQ(hashTableNode *lhs, hashTableNode *rhs) {
+  struct Entry *le = container_of(lhs, struct Entry, HTNode);
+  struct Entry *re = container_of(rhs, struct Entry, HTNode);
+  return le->key == re->key;
+}
 
 // static void serverDo(int client_fd);
 static void setFdToNonblock(int fd);
@@ -335,7 +369,7 @@ static bool oneRequest(Conn *conn) {
   // current request
   size_t remain = conn->rbuf_size - 4 - len;
   if (remain) {
-    memmove(&conn->rbuf, &conn->rbuf[4 + len], remain);
+    memmove(conn->rbuf, &conn->rbuf[4 + len], remain);
   }
   conn->rbuf_size = remain;
 
@@ -456,14 +490,18 @@ static bool cmdIs(std::string &word, const char *cmd) {
   return strcasecmp(word.c_str(), cmd) == 0;
 }
 
-static std::map<std::string, std::string> g_map;
-
+static uint64_t strHash(const uint8_t *data, size_t length);
 static uint32_t doGet(const std::vector<std::string> &cmd, uint8_t *res,
                       uint32_t *res_len) {
-  if (!g_map.count(cmd[1])) {
+  Entry key;
+  // key.key.swap(cmd[1]);
+  key.key = cmd[1];
+  key.HTNode.hash_value = strHash((uint8_t *)key.key.data(), key.key.size());
+  hashTableNode *node = HMLookup(&global_data.HMap, &key.HTNode, &entryEQ);
+  if (!node) {
     return RES_NX;
   }
-  std::string &val = g_map[cmd[1]];
+  const std::string &val = container_of(node, Entry, HTNode)->value;
   assert(val.size() <= k_max_msg);
   memcpy(res, val.data(), val.size());
   *res_len = (uint32_t)val.size();
@@ -474,7 +512,19 @@ static uint32_t doSet(const std::vector<std::string> &cmd, uint8_t *res,
                       uint32_t *res_len) {
   (void)res;
   (void)res_len;
-  g_map[cmd[1]] = cmd[2];
+  Entry key;
+  key.key = cmd[1];
+  key.HTNode.hash_value = strHash((uint8_t *)key.key.data(), key.key.size());
+  hashTableNode *node = HMLookup(&global_data.HMap, &key.HTNode, &entryEQ);
+  if (node) {
+    container_of(node, Entry, HTNode)->value = cmd[2];
+  } else {
+    Entry *new_entry = new Entry();
+    new_entry->key = key.key;
+    new_entry->HTNode.hash_value = key.HTNode.hash_value;
+    new_entry->value = cmd[2];
+    HMInsert(&global_data.HMap, &new_entry->HTNode);
+  }
   return RES_OK;
 }
 
@@ -482,6 +532,21 @@ static uint32_t doDel(const std::vector<std::string> &cmd, uint8_t *res,
                       uint32_t *res_len) {
   (void)res;
   (void)res_len;
-  g_map.erase(cmd[1]);
+  Entry key;
+  key.key = cmd[1];
+  key.HTNode.hash_value = strHash((uint8_t *)key.key.data(), key.key.size());
+  hashTableNode *deleted_node = HMPop(&global_data.HMap, &key.HTNode, &entryEQ);
+  if (deleted_node) {
+    delete container_of(deleted_node, Entry, HTNode);
+  }
   return RES_OK;
+}
+
+// FNV-1a Algorithm
+static uint64_t strHash(const uint8_t *data, size_t length) {
+  uint32_t h = 0x811C9DC5;
+  for (size_t i = 0; i < length; i++) {
+    h = (h + data[i]) * 0x01000193;
+  }
+  return h;
 }
