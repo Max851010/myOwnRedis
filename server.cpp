@@ -44,6 +44,19 @@ enum {
   RES_NX = 2, // Not exist
 };
 
+enum {
+  SER_NIL = 0, // Like `NULL`
+  SER_ERR = 1, // An error code and message
+  SER_STR = 2, // A string
+  SER_INT = 3, // A int64
+  SER_ARR = 4, // Array
+};
+
+enum {
+  ERR_UNKNOWN = 1,
+  ERR_2BIG = 2,
+};
+
 struct Conn {
   int fd = -1;
   uint32_t state = 0; // STATE_REQ or STATE_RES
@@ -313,9 +326,11 @@ static bool fillBuffer(Conn *conn) {
 }
 
 static void stateRes(Conn *conn);
-static int32_t parseRequest(const uint8_t *req, uint32_t req_len,
-                            uint32_t *res_code, uint8_t *res,
-                            uint32_t *res_len);
+static void parseRequest(std::vector<std::string> &cmd, std::string &out);
+static int32_t parseHelper(const uint8_t *data, size_t req_len,
+                           std::vector<std::string> &cmd);
+static void outErr(std::string &out, int32_t error_code,
+                   const std::string &msg);
 // parse the request from the buffer
 static bool oneRequest(Conn *conn) {
   // Not enough data in the buffer
@@ -344,25 +359,46 @@ static bool oneRequest(Conn *conn) {
   }
 
   // Got one request, generate the response
-  uint32_t rescode = 0;
+  // uint32_t rescode = 0;
   // response length
-  uint32_t wlen = 0;
+  // uint32_t wlen = 0;
   // arg1: request data
   //       |   4 bytes   |   remaining bytes   |
   //         data length      request data
   // arg4: response data
   //       |   4 bytes   |   4 bytes   |   remaining bytes   |
   //         data length     rescode        response data
-  int32_t err =
-      parseRequest(&conn->rbuf[4], len, &rescode, &conn->wbuf[4 + 4], &wlen);
-  if (err) {
+  // int32_t err =
+  //     parseRequest(&conn->rbuf[4], len, &rescode, &conn->wbuf[4 + 4], &wlen);
+  // if (err) {
+  //   conn->state = STATE_END;
+  //   return false;
+  // }
+  // because it adds response code
+  // wlen += 4;
+  // memcpy(&conn->wbuf[0], &wlen, 4);
+  // memcpy(&conn->wbuf[4], &rescode, 4);
+  // conn->wbuf_size = 4 + wlen;
+
+  // Parse the request
+  std::vector<std::string> cmd;
+  if (parseHelper(&conn->rbuf[4], len, cmd) != 0) {
+    HelperLibrary::MsgHelpers::error("Bad Request");
     conn->state = STATE_END;
     return false;
   }
-  // because it adds response code
-  wlen += 4;
+  // Generate one response after got one request
+  std::string out;
+  parseRequest(cmd, out);
+
+  // Pack the response into the buffer
+  if (4 + out.size() > k_max_msg) {
+    out.clear();
+    outErr(out, ERR_2BIG, "response is too big");
+  }
+  uint32_t wlen = (uint32_t)out.size();
   memcpy(&conn->wbuf[0], &wlen, 4);
-  memcpy(&conn->wbuf[4], &rescode, 4);
+  memcpy(&conn->wbuf[4], out.data(), out.size());
   conn->wbuf_size = 4 + wlen;
 
   // If there is remaining data, move to the start of the buffer and remove the
@@ -419,39 +455,26 @@ static bool flushBuffer(Conn *conn) {
   return true;
 }
 
-static int32_t parseHelper(const uint8_t *data, size_t req_len,
-                           std::vector<std::string> &cmd);
-static uint32_t doGet(const std::vector<std::string> &cmd, uint8_t *res,
-                      uint32_t *res_len);
-static uint32_t doSet(const std::vector<std::string> &cmd, uint8_t *res,
-                      uint32_t *res_len);
-static uint32_t doDel(const std::vector<std::string> &cmd, uint8_t *res,
-                      uint32_t *res_len);
+static void doGet(std::vector<std::string> &cmd, std::string &out);
+static void doSet(std::vector<std::string> &cmd, std::string &out);
+static void doDel(std::vector<std::string> &cmd, std::string &out);
+static void doKeys(std::vector<std::string> &cmd, std::string &out);
 static bool cmdIs(std::string &word, const char *cmd);
-static int32_t parseRequest(const uint8_t *req, uint32_t req_len,
-                            uint32_t *res_code, uint8_t *res,
-                            uint32_t *res_len) {
-  std::vector<std::string> cmd;
-  if (parseHelper(req, req_len, cmd) != 0) {
-    HelperLibrary::MsgHelpers::error(
-        "BAD REQUEST: Failed to parse the request!");
-    return -1;
-  }
-  if (cmd.size() == 2 && cmdIs(cmd[0], "get")) {
-    *res_code = doGet(cmd, res, res_len);
+static void outErr(std::string &out, int32_t error_code,
+                   const std::string &msg);
+static void parseRequest(std::vector<std::string> &cmd, std::string &out) {
+  if (cmd.size() == 1 && cmdIs(cmd[0], "keys")) {
+    doKeys(cmd, out);
+  } else if (cmd.size() == 2 && cmdIs(cmd[0], "get")) {
+    doGet(cmd, out);
   } else if (cmd.size() == 3 && cmdIs(cmd[0], "set")) {
-    *res_code = doSet(cmd, res, res_len);
+    doSet(cmd, out);
   } else if (cmd.size() == 2 && cmdIs(cmd[0], "del")) {
-    *res_code = doDel(cmd, res, res_len);
+    doDel(cmd, out);
   } else {
-    HelperLibrary::MsgHelpers::error(std::to_string(cmd.size()).c_str());
-    *res_code = RES_ERR;
-    const char *msg = "Unknown command";
-    strcpy((char *)res, msg);
-    *res_len = strlen(msg);
-    return 0;
+    // Unknown Command
+    outErr(out, ERR_UNKNOWN, "Unknown Command");
   }
-  return 0;
 }
 
 // Read arguments
@@ -490,28 +513,59 @@ static bool cmdIs(std::string &word, const char *cmd) {
   return strcasecmp(word.c_str(), cmd) == 0;
 }
 
+static void keyScan(hashTable *HTable, void (*f)(hashTableNode *, void *),
+                    void *arg) {
+  if (HTable->size == 0) {
+    return;
+  }
+  for (size_t i = 0; i < HTable->mask + 1; i++) {
+    hashTableNode *HTNode = HTable->table[i];
+    while (HTNode) {
+      f(HTNode, arg);
+      HTNode = HTNode->next;
+    }
+  }
+}
+
+static void outStr(std::string &out, const std::string &val);
+// void* pointer: means it can point to any type
+static void callbackScan(hashTableNode *HTNode, void *arg) {
+  // (std::string *)arg: cast arg to type string *
+  // *(std::string *)arg: dereferences the type pointer, now it points to the
+  //                      actual string object
+  std::string &out = *(std::string *)arg;
+  outStr(out, container_of(HTNode, Entry, HTNode)->key);
+}
+
+static void outArr(std::string &out, uint32_t n);
+static void keyScan(hashTable *HTable, void (*f)(hashTableNode *, void *),
+                    void *arg);
+static void callbackScan(hashTableNode *HTNode, void *arg);
+static void doKeys(std::vector<std::string> &cmd, std::string &out) {
+  (void)cmd;
+  outArr(out, (uint32_t)HMSize(&global_data.HMap));
+  keyScan(&global_data.HMap.current_HT, &callbackScan, &out);
+  keyScan(&global_data.HMap.previous_HT, &callbackScan, &out);
+}
+
 static uint64_t strHash(const uint8_t *data, size_t length);
-static uint32_t doGet(const std::vector<std::string> &cmd, uint8_t *res,
-                      uint32_t *res_len) {
+static void outNil(std::string &out);
+static void outStr(std::string &out, const std::string &val);
+static void doGet(std::vector<std::string> &cmd, std::string &out) {
   Entry key;
-  // key.key.swap(cmd[1]);
   key.key = cmd[1];
   key.HTNode.hash_value = strHash((uint8_t *)key.key.data(), key.key.size());
   hashTableNode *node = HMLookup(&global_data.HMap, &key.HTNode, &entryEQ);
   if (!node) {
-    return RES_NX;
+    return outNil(out);
   }
   const std::string &val = container_of(node, Entry, HTNode)->value;
-  assert(val.size() <= k_max_msg);
-  memcpy(res, val.data(), val.size());
-  *res_len = (uint32_t)val.size();
-  return RES_OK;
+  outStr(out, val);
 }
 
-static uint32_t doSet(const std::vector<std::string> &cmd, uint8_t *res,
-                      uint32_t *res_len) {
-  (void)res;
-  (void)res_len;
+static uint64_t strHash(const uint8_t *data, size_t length);
+static void outNil(std::string &out);
+static void doSet(std::vector<std::string> &cmd, std::string &out) {
   Entry key;
   key.key = cmd[1];
   key.HTNode.hash_value = strHash((uint8_t *)key.key.data(), key.key.size());
@@ -525,13 +579,12 @@ static uint32_t doSet(const std::vector<std::string> &cmd, uint8_t *res,
     new_entry->value = cmd[2];
     HMInsert(&global_data.HMap, &new_entry->HTNode);
   }
-  return RES_OK;
+  return outNil(out);
 }
 
-static uint32_t doDel(const std::vector<std::string> &cmd, uint8_t *res,
-                      uint32_t *res_len) {
-  (void)res;
-  (void)res_len;
+static uint64_t strHash(const uint8_t *data, size_t length);
+static void outInt(std::string &out, int64_t val);
+static void doDel(std::vector<std::string> &cmd, std::string &out) {
   Entry key;
   key.key = cmd[1];
   key.HTNode.hash_value = strHash((uint8_t *)key.key.data(), key.key.size());
@@ -539,7 +592,7 @@ static uint32_t doDel(const std::vector<std::string> &cmd, uint8_t *res,
   if (deleted_node) {
     delete container_of(deleted_node, Entry, HTNode);
   }
-  return RES_OK;
+  return outInt(out, deleted_node ? 1 : 0);
 }
 
 // FNV-1a Algorithm
@@ -550,3 +603,33 @@ static uint64_t strHash(const uint8_t *data, size_t length) {
   }
   return h;
 }
+
+static void outStr(std::string &out, const std::string &val) {
+  out.push_back(SER_STR);
+  uint32_t len = (uint32_t)val.size();
+  // To ensures that the length of the string is stored as a binary
+  // representation in the out string.
+  out.append((char *)&len, 4);
+  out.append(val);
+}
+
+static void outInt(std::string &out, int64_t val) {
+  out.push_back(SER_INT);
+  out.append((char *)&val, 8);
+}
+
+static void outErr(std::string &out, int32_t error_code,
+                   const std::string &msg) {
+  out.push_back(SER_ERR);
+  out.append((char *)&error_code, 4);
+  uint32_t len = (uint32_t)msg.size();
+  out.append((char *)&len, 4);
+  out.append(msg);
+}
+
+static void outArr(std::string &out, uint32_t n) {
+  out.push_back(SER_ARR);
+  out.append((char *)&n, 4);
+}
+
+static void outNil(std::string &out) { out.push_back(SER_NIL); }
