@@ -136,7 +136,6 @@ g++ -std=c++11 -o AVLTest libraries/AVLTest.cpp libraries/AVL.cpp
 ## References
 
 1. Build Your Own Redis: [https://build-your-own.org/redis/](https://build-your-own.org/redis/)
-2. Fonseca, J. (2002). _Organizational Complexity and Innovation_. New York: Routledge.
-3. Redis Official Documentation: [https://redis.io/documentation](https://redis.io/documentation)
-4. C++ Reference for `<cstdint>` and `<cstddef>`: [https://en.cppreference.com](https://en.cppreference.com)
-5. Socket Programming Basics: [Beej's Guide to Network Programming](https://beej.us/guide/bgnet/)
+2. Redis Official Documentation: [https://redis.io/documentation](https://redis.io/documentation)
+3. C++ Reference for `<cstdint>` and `<cstddef>`: [https://en.cppreference.com](https://en.cppreference.com)
+4. Socket Programming Basics: [Beej's Guide to Network Programming](https://beej.us/guide/bgnet/)
