@@ -1,3 +1,4 @@
+#include "libraries/Common.h"
 #include "libraries/HashTable.h"
 #include "libraries/HelperLibrary.h"
 #include <arpa/inet.h>
@@ -18,17 +19,6 @@
 #include <unistd.h>
 #include <vector>
 
-// Find the start pointer of the struct
-// #define container_of(ptr, type, member) \
-//  ({ \
-//    const typeof(((type *)0)->member) *__mptr = (ptr); \
-//    (type *)((char *)__mptr - offsetof(type, member)); \
-//  }) // global variables
-
-#define container_of(ptr, type, member)                                        \
-  reinterpret_cast<type *>(reinterpret_cast<char *>(ptr) -                     \
-                           offsetof(type, member))
-
 const size_t k_max_msg = 4096;
 
 // Conn preparation for state machine
@@ -42,14 +32,6 @@ enum {
   RES_OK = 0,
   RES_ERR = 1,
   RES_NX = 2, // Not exist
-};
-
-enum {
-  SER_NIL = 0, // Like `NULL`
-  SER_ERR = 1, // An error code and message
-  SER_STR = 2, // A string
-  SER_INT = 3, // A int64
-  SER_ARR = 4, // Array
 };
 
 enum {
@@ -548,7 +530,6 @@ static void doKeys(std::vector<std::string> &cmd, std::string &out) {
   keyScan(&global_data.HMap.previous_HT, &callbackScan, &out);
 }
 
-static uint64_t strHash(const uint8_t *data, size_t length);
 static void outNil(std::string &out);
 static void outStr(std::string &out, const std::string &val);
 static void doGet(std::vector<std::string> &cmd, std::string &out) {
@@ -563,7 +544,6 @@ static void doGet(std::vector<std::string> &cmd, std::string &out) {
   outStr(out, val);
 }
 
-static uint64_t strHash(const uint8_t *data, size_t length);
 static void outNil(std::string &out);
 static void doSet(std::vector<std::string> &cmd, std::string &out) {
   Entry key;
@@ -582,7 +562,6 @@ static void doSet(std::vector<std::string> &cmd, std::string &out) {
   return outNil(out);
 }
 
-static uint64_t strHash(const uint8_t *data, size_t length);
 static void outInt(std::string &out, int64_t val);
 static void doDel(std::vector<std::string> &cmd, std::string &out) {
   Entry key;
@@ -593,15 +572,6 @@ static void doDel(std::vector<std::string> &cmd, std::string &out) {
     delete container_of(deleted_node, Entry, HTNode);
   }
   return outInt(out, deleted_node ? 1 : 0);
-}
-
-// FNV-1a Algorithm
-static uint64_t strHash(const uint8_t *data, size_t length) {
-  uint32_t h = 0x811C9DC5;
-  for (size_t i = 0; i < length; i++) {
-    h = (h + data[i]) * 0x01000193;
-  }
-  return h;
 }
 
 static void outStr(std::string &out, const std::string &val) {
