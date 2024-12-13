@@ -1,9 +1,3 @@
-# Build
-
-```
-  clang++ -std=c++11 -c libraries/HelperLibrary.cpp -o HelperLibrary.o && clang++ -std=c++11 server.cpp helperLibrary.o -o myOwnRedis && clang++ -std=c++11 client.cpp HelperLibrary.o -o client
-```
-
 # MyOwnRedis: A Simplified Redis Clone
 
 This project implements a simplified version of **Redis** as an educational exercise, inspired by the ["Build Your Own Redis"](https://build-your-own.org/redis/) guide. The goal is to deepen the understanding of key components like hash tables, AVL trees, and client-server communication using sockets.
